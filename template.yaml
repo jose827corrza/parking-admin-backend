@@ -1,16 +1,102 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  parking-admin-backend
-
-  Sample SAM Template for parking-admin-backend
+Description: parking-admin-backend
   
-# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
     Timeout: 3
+    MemorySize: 128
+    Runtime: nodejs24.x
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: The environment to deploy to.
+  ProjectName:
+    Type: String
+    Default: parking-admin-backend
+    Description: The name of the project.
+  ResourcesName:
+    Type: String
+    Default: "house-control"
+    Description: Cognito User Pool name
+  InitialAdminEmail:
+    Type: String
+    Default: "admin@parking.com"
 
 Resources:
+  ParkingApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Environment
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt ParkingUserPool.Arn
+
+  ParkingUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ${ResourcesName}-userpool-${Environment}
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+
+  ParkingUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub ${ResourcesName}-userpool-client-${Environment}
+      UserPoolId: !Ref ParkingUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+
+  AdminUserPoolGroup:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: "admin"
+        UserPoolId: !Ref ParkingUserPool
+        Description: "Administrator role with elevated permissions"
+        Precedence: 1
+
+  CustomerUserPoolGroup:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: "customer"
+        UserPoolId: !Ref ParkingUserPool
+        Description: "Standard customer role"
+        Precedence: 10
+
+  InitialAdminUser:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      UserPoolId: !Ref ParkingUserPool
+      Username: !Ref InitialAdminEmail
+      UserAttributes:
+        - Name: email
+          Value: !Ref InitialAdminEmail
+        - Name: email_verified
+          Value: "true"
+      #   - Name: name
+      #     Value: "admin"
+      # MessageAction: RESEND
+
+  AdminUserGroupAttachment:
+      Type: AWS::Cognito::UserPoolUserToGroupAttachment
+      Properties:
+        UserPoolId: !Ref ParkingUserPool
+        Username: !Ref InitialAdminUser
+        GroupName: !Ref AdminUserPoolGroup
+
   HelloWorldFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
@@ -23,8 +109,37 @@ Resources:
         HelloWorld:
           Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
           Properties:
+            RestApiId: !Ref ParkingApi
             Path: /hello
             Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints: 
+        - app.ts
+
+  HelloWorldNoAuthFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: hello-world-without-auth/
+      Handler: app.lambdaHandler
+      Runtime: nodejs24.x
+      Architectures:
+        - x86_64
+      Events:
+        PublicHelloWorld:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            RestApiId: !Ref ParkingApi
+            Path: /hello-no-auth
+            Method: get
+            Auth:
+              Authorizer: NONE
     Metadata: # Manage esbuild properties
       BuildMethod: esbuild
       BuildProperties:
@@ -38,12 +153,15 @@ Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
   # Find out more about other implicit resources you can reference within SAM
   # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
-  HelloWorldApi:
+  Api:
     Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/hello/"
-  HelloWorldFunction:
-    Description: "Hello World Lambda Function ARN"
-    Value: !GetAtt HelloWorldFunction.Arn
+    Value: !Sub "https://${ParkingApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+  Environment:
+    Description: "Environment name"
+    Value: !Ref Environment
+  ClientId:
+    Description: "Cognito User Pool Client ID"
+    Value: !Ref ParkingUserPoolClient
   HelloWorldFunctionIamRole:
     Description: "Implicit IAM Role created for Hello World function"
     Value: !GetAtt HelloWorldFunctionRole.Arn
