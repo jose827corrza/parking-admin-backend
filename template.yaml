@@ -23,7 +23,7 @@ Parameters:
     Description: The name of the project.
   ResourcesName:
     Type: String
-    Default: "house-control"
+    Default: "parking-admin"
     Description: Cognito User Pool name
   InitialAdminEmail:
     Type: String
@@ -42,6 +42,8 @@ Resources:
 
   ParkingUserPool:
     Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       UserPoolName: !Sub ${ResourcesName}-userpool-${Environment}
       UsernameAttributes:
@@ -98,7 +100,7 @@ Resources:
         GroupName: !Ref AdminUserPoolGroup
 
   HelloWorldFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function
     Properties:
       CodeUri: hello-world/
       Handler: app.lambdaHandler
@@ -107,14 +109,14 @@ Resources:
         - x86_64
       Events:
         HelloWorld:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api
           Properties:
             RestApiId: !Ref ParkingApi
             Path: /hello
             Method: get
             Auth:
               Authorizer: CognitoAuthorizer
-    Metadata: # Manage esbuild properties
+    Metadata:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
@@ -124,7 +126,7 @@ Resources:
         - app.ts
 
   HelloWorldNoAuthFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function
     Properties:
       CodeUri: hello-world-without-auth/
       Handler: app.lambdaHandler
@@ -133,14 +135,14 @@ Resources:
         - x86_64
       Events:
         PublicHelloWorld:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api
           Properties:
             RestApiId: !Ref ParkingApi
             Path: /hello-no-auth
             Method: get
             Auth:
               Authorizer: NONE
-    Metadata: # Manage esbuild properties
+    Metadata:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
@@ -149,10 +151,156 @@ Resources:
         EntryPoints: 
         - app.ts
 
+  InsertPlateRecordFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: insert-plate-record/
+      Handler: app.lambdaHandler
+      Runtime: nodejs24.x
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ParkingTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt ParkingTable.Arn
+      Events:
+        InsertPlateRecord:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ParkingApi
+            Path: /insert-plate-record
+            Method: post
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints: 
+        - app.ts
+
+  UpsertPricingRecordFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: upsert-pricing-record/
+      Handler: app.lambdaHandler
+      Runtime: nodejs24.x
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ParkingPricingTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt ParkingPricingTable.Arn
+      Events:
+        UpsertPricingRecord:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ParkingApi
+            Path: /upsert-pricing-record
+            Method: post
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints: 
+        - app.ts
+
+  GetPricingRecordFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: get-pricing-record/
+      Handler: app.lambdaHandler
+      Runtime: nodejs24.x
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ParkingPricingTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+              Resource: !GetAtt ParkingPricingTable.Arn
+      Events:
+        GetPricingRecord:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ParkingApi
+            Path: /get-pricing-record/{parking_id}
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints: 
+        - app.ts
+  
+  ParkingTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ${ResourcesName}-parking-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: parking_id
+          KeyType: HASH
+        - AttributeName: plate_number
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: parking_id
+          AttributeType: S
+        - AttributeName: plate_number
+          AttributeType: S
+      GlobalSecondaryIndexes:
+        - IndexName: plate_number_index
+          KeySchema:
+            - AttributeName: plate_number
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+            
+  ParkingPricingTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ${ResourcesName}-pricing-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: parking_id
+          KeyType: HASH
+      AttributeDefinitions:
+        - AttributeName: parking_id
+          AttributeType: S
+
 Outputs:
-  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
-  # Find out more about other implicit resources you can reference within SAM
-  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
   Api:
     Description: "API Gateway endpoint URL for Prod stage for Hello World function"
     Value: !Sub "https://${ParkingApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
