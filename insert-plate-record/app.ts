@@ -73,14 +73,13 @@ const insertRecord = async (car: Car): Promise<Car> => {
             parking_id: car.parking_id,
             plate_number: car.plate_number,
         },
-        // Only target ingress_datetime and updated_at. 
-        // All other attributes on the existing record remain completely safe.
+        
         UpdateExpression: 'SET ingress_datetime = :ingress_datetime, updated_at = :updated_at',
         ExpressionAttributeValues: {
             ':ingress_datetime': car.ingress_datetime,
             ':updated_at': new Date().toISOString(),
         },
-        ReturnValues: 'ALL_NEW', // Returns the full updated item back
+        ReturnValues: 'ALL_NEW',
     });
 
     await docClient.send(command);

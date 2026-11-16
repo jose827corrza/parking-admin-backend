@@ -26,3 +26,11 @@ export interface PricingRecord {
     price_by_minute: boolean;
     updated_at: string;
 }
+
+export interface Earning {
+    parking_id: string;
+    date: string;
+    ingress: number[];
+    total_ingress: number;
+    updated_at: string;
+}

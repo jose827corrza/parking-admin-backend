@@ -7,6 +7,7 @@ const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
 const PARKING_TABLE_NAME = process.env.PARKING_TABLE_NAME;
+const EARNING_TABLE_NAME = process.env.EARNING_TABLE_NAME;
 
 export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {
@@ -37,8 +38,10 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
             egress_datetime: new Date().toISOString(),
         };
 
+        await addEarnToParking(record);
+
         const result = await upsertWithAttendance(body.parking_id, body.plate_number,attendance);
-        console.log('Upserted Pricing Record:', result);
+        
         return {
             statusCode: 200,
             body: JSON.stringify({ data: result }),
@@ -109,3 +112,44 @@ const upsertWithAttendance = async (parking_id: string, plate_number: string, ne
     
     return response.Attributes as Car;
 }
+
+const addEarnToParking = async (record: Car) => {
+
+    const currentDateFormatted = obtainCurrentDateFormatted();
+    console.log(`FUNC - ${currentDateFormatted} - ${record.parking_id}`)
+
+    const command = new UpdateCommand({
+        TableName: EARNING_TABLE_NAME,
+        Key: {
+            parking_id: record.parking_id,
+            date: currentDateFormatted,
+        },
+        UpdateExpression: `
+            SET ingress = list_append(if_not_exists(ingress, :empty_list), :new_val),
+                total_ingress = if_not_exists(total_ingress, :zero) + :amount,
+                updated_at = :updated_at
+        `,
+        ExpressionAttributeValues: {
+            ':empty_list': [],
+            ':new_val': [record.to_pay],
+            ':zero': 0,
+            ':amount': record.to_pay,
+            ':updated_at': new Date().toISOString(),
+        },
+        ReturnValues: 'ALL_NEW',
+    });
+
+    const response = (await docClient.send(command)) as UpdateCommandOutput;
+    return response.Attributes;
+}
+
+const obtainCurrentDateFormatted = (): string => {
+    const today = new Date();
+
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed (+1)
+    const day = String(today.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+}
+
