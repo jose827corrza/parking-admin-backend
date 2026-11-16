@@ -1,13 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, UpdateCommand, UpdateCommandOutput } from '@aws-sdk/lib-dynamodb';
-
-export interface PricingRecord {
-    parking_id: string;
-    parking_name: string;
-    price_by_minute: boolean;
-    updated_at: string;
-}
+import { PricingRecord } from '@shared/types';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);

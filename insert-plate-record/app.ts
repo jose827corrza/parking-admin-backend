@@ -1,13 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { Car } from '@shared/types';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
-
-export interface Car {
-    parking_id: string;
-    plate_number: string;
-    is_premium: boolean;
-    ingress_datetime: string;
-}
+import { DynamoDBDocumentClient, PutCommand, UpdateCommand, UpdateCommandOutput } from '@aws-sdk/lib-dynamodb';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -36,11 +30,11 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
             ingress_datetime: new Date().toISOString(),
         }
 
-        await insertRecord(car);
+        const record = await insertRecord(car);
 
         return {
             statusCode: 200,
-            body: JSON.stringify({ message: 'Success! Welcome, Admin.' }),
+            body: JSON.stringify({ record }),
         };
 
     } catch (err: any) {
@@ -72,11 +66,24 @@ const validateAccess = (claims: any) => {
         }
 }
 
-const insertRecord = async (car: Car): Promise<void> => {
-    const command = new PutCommand({
+const insertRecord = async (car: Car): Promise<Car> => {
+    const command = new UpdateCommand({
         TableName: TABLE_NAME,
-        Item: car,
+        Key: {
+            parking_id: car.parking_id,
+            plate_number: car.plate_number,
+        },
+        // Only target ingress_datetime and updated_at. 
+        // All other attributes on the existing record remain completely safe.
+        UpdateExpression: 'SET ingress_datetime = :ingress_datetime, updated_at = :updated_at',
+        ExpressionAttributeValues: {
+            ':ingress_datetime': car.ingress_datetime,
+            ':updated_at': new Date().toISOString(),
+        },
+        ReturnValues: 'ALL_NEW', // Returns the full updated item back
     });
 
     await docClient.send(command);
+
+    return car;
 }

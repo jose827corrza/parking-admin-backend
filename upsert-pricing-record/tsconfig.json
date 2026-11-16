@@ -9,7 +9,10 @@
       "moduleResolution":"node",
       "esModuleInterop": true, 
       "skipLibCheck": true,
-      "forceConsistentCasingInFileNames": true,  
+      "forceConsistentCasingInFileNames": true,
+      "paths": {
+        "@shared/*": ["../shared/*"]
+      }
     },
     "exclude": ["node_modules", "**/*.test.ts"]
   }

@@ -188,6 +188,44 @@ Resources:
         EntryPoints: 
         - app.ts
 
+  UpsertEgressVehicleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: upsert-egress-vehicle/
+      Handler: app.lambdaHandler
+      Runtime: nodejs24.x
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          PARKING_TABLE_NAME: !Ref ParkingTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:GetItem
+              Resource: !GetAtt ParkingTable.Arn
+      Events:
+        UpsertEgressVehicle:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ParkingApi
+            Method: post
+            Path: /upsert-egress-vehicle
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints: 
+        - app.ts
+
   UpsertPricingRecordFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -261,6 +299,50 @@ Resources:
         EntryPoints: 
         - app.ts
   
+  GetAmountToPayFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: get-amount-to-pay/
+      Handler: app.lambdaHandler
+      Runtime: nodejs24.x
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          PARKING_TABLE_NAME: !Ref ParkingTable
+          PARKING_PRICING_TABLE_NAME: !Ref ParkingPricingTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: 
+                - !GetAtt ParkingTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+              Resource:
+                - !GetAtt ParkingPricingTable.Arn
+      Events:
+        GetAmountToPay:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ParkingApi
+            Method: get
+            Path: /get-amount-to-pay/{parking_id}/{plate_number}
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints: 
+        - app.ts
+
   ParkingTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
